@@ -1,29 +1,142 @@
 <?php
-require_once 'config/db.php';
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    header("Access-Control-Allow-Origin: *");
+    header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
+    header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+    header("Access-Control-Max-Age: 86400");
+    http_response_code(200);
+    exit();
+}
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+header("Content-Type: application/json; charset=UTF-8");
 
-$method = $_SERVER['REQUEST_METHOD'];
+$host = "localhost";
+$db_name = "concept_autos_pos";
+$username = "root";
+$password = "";
 
-if ($method === 'GET') {
-    // Fetch all products
-    $stmt = $conn->prepare("SELECT * FROM products ORDER BY name ASC");
-    $stmt->execute();
-    $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    echo json_encode($products);
-} 
-elseif ($method === 'POST') {
-    // Add new product
-    $data = json_decode(file_get_contents("php://input"), true);
-    if (isset($data['sku'], $data['name'], $data['sale_price'])) {
-        $stmt = $conn->prepare("INSERT INTO products (sku, name, category, purchase_price, wholesale_price, sale_price, stock_qty, stock_ml, min_stock_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->execute([
-            $data['sku'], $data['name'], $data['category'] ?? '', 
-            $data['purchase_price'] ?? 0, $data['wholesale_price'] ?? 0, 
-            $data['sale_price'], $data['stock_qty'] ?? 0, 
-            $data['stock_ml'] ?? 0, $data['min_stock_level'] ?? 5
-        ]);
-        echo json_encode(["message" => "Product created successfully", "id" => $conn->lastInsertId()]);
-    } else {
-        echo json_encode(["error" => "Invalid input"]);
+try {
+    $conn = new PDO("mysql:host=$host;dbname=$db_name", $username, $password);
+    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch (PDOException $e) {
+    http_response_code(500);
+    echo json_encode(["error" => "DB connection failed: " . $e->getMessage()]);
+    exit();
+}
+
+function respond($data, $code = 200) {
+    http_response_code($code);
+    echo json_encode($data);
+    exit();
+}
+
+try {
+    $method = $_SERVER['REQUEST_METHOD'];
+
+    if ($method === 'GET') {
+        if (isset($_GET['id'])) {
+            $stmt = $conn->prepare("SELECT * FROM products WHERE id = ?");
+            $stmt->execute([$_GET['id']]);
+            respond($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
+        } else {
+            $stmt = $conn->query("SELECT * FROM products ORDER BY name ASC");
+            respond($stmt->fetchAll(PDO::FETCH_ASSOC));
+        }
     }
+
+    elseif ($method === 'POST') {
+        $data = json_decode(file_get_contents("php://input"), true);
+        if (!is_array($data)) respond(["error" => "Invalid JSON body"], 400);
+        if (empty($data['name'])) respond(["error" => "Name is required"], 400);
+
+        $stmt = $conn->prepare("INSERT INTO products
+            (name, category, purchase_price, wholesale_price, sale_price,
+             stock_qty, stock_ml, min_stock_level, rack, shelf, unit)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+
+        $stmt->execute([
+            $data['name'],
+            $data['category'] ?? '',
+            $data['purchase_price'] ?? 0,
+            $data['wholesale_price'] ?? 0,
+            $data['sale_price'] ?? 0,
+            max(0, (int)($data['stock_qty'] ?? 0)),
+            max(0, (int)($data['stock_ml'] ?? 0)),
+            $data['min_stock_level'] ?? 5,
+            $data['rack'] ?? '',
+            $data['shelf'] ?? '',
+            $data['unit'] ?? 'pcs',
+        ]);
+
+        respond(["message" => "Product created", "id" => (int)$conn->lastInsertId()], 201);
+    }
+
+    elseif ($method === 'PUT') {
+        $data = json_decode(file_get_contents("php://input"), true);
+        if (!is_array($data)) respond(["error" => "Invalid JSON body"], 400);
+
+        $id = $data['id'] ?? null;
+        if (!$id) respond(["error" => "ID is required"], 400);
+
+        // Stock-only update (from POS)
+        if (isset($data['quantity_sold']) || isset($data['oil_used_ml'])) {
+            $stmt = $conn->prepare("UPDATE products
+                SET stock_qty = GREATEST(0, stock_qty - ?),
+                    stock_ml  = GREATEST(0, stock_ml - ?)
+                WHERE id = ?");
+            $stmt->execute([
+                (int)($data['quantity_sold'] ?? 0),
+                (int)($data['oil_used_ml'] ?? 0),
+                $id,
+            ]);
+            respond(["message" => "Stock updated"]);
+        }
+
+        // Full update
+        $stmt = $conn->prepare("UPDATE products SET
+            name = ?, category = ?,
+            purchase_price = ?, wholesale_price = ?, sale_price = ?,
+            stock_qty = ?, stock_ml = ?, min_stock_level = ?,
+            rack = ?, shelf = ?, unit = ?
+            WHERE id = ?");
+
+        $stmt->execute([
+            $data['name'],
+            $data['category'] ?? '',
+            $data['purchase_price'] ?? 0,
+            $data['wholesale_price'] ?? 0,
+            $data['sale_price'] ?? 0,
+            max(0, (int)($data['stock_qty'] ?? 0)),
+            max(0, (int)($data['stock_ml'] ?? 0)),
+            $data['min_stock_level'] ?? 5,
+            $data['rack'] ?? '',
+            $data['shelf'] ?? '',
+            $data['unit'] ?? 'pcs',
+            $id,
+        ]);
+
+        respond(["message" => "Product updated"]);
+    }
+
+    elseif ($method === 'DELETE') {
+        $data = json_decode(file_get_contents("php://input"), true);
+        $id = $data['id'] ?? $_GET['id'] ?? null;
+        if (!$id) respond(["error" => "ID is required"], 400);
+
+        $stmt = $conn->prepare("DELETE FROM products WHERE id = ?");
+        $stmt->execute([$id]);
+        respond(["message" => "Product deleted"]);
+    }
+
+    else {
+        respond(["error" => "Method not allowed: " . $method], 405);
+    }
+
+} catch (PDOException $e) {
+    respond(["error" => "Database error: " . $e->getMessage()], 500);
+} catch (Exception $e) {
+    respond(["error" => "Server error: " . $e->getMessage()], 500);
 }
 ?>

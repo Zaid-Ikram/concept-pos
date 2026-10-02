@@ -20,7 +20,7 @@ export function ShortcutProvider({ children }: { children: React.ReactNode }) {
 
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "p" && !isInput) {
         e.preventDefault();
-        router.push("/dashboard/pos");
+        router.push("/pos");
         toast.success("Navigated to POS");
       }
 

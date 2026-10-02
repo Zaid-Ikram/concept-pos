@@ -24,7 +24,7 @@ export default function StickerPage() {
         <button onClick={() => window.print()} className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg cursor-pointer">
           <Printer className="w-4 h-4" /> Print Sticker
         </button>
-        <button onClick={() => router.push("/dashboard/pos")} className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-zinc-200 text-zinc-700 rounded-lg cursor-pointer">
+        <button onClick={() => router.push("/pos")} className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-zinc-200 text-zinc-700 rounded-lg cursor-pointer">
           <X className="w-4 h-4" /> Close
         </button>
       </div>

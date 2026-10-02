@@ -20,10 +20,13 @@ export default function CustomersPage() {
 
   const [isVehicleFormOpen, setIsVehicleFormOpen] = useState(false);
   const [editingVehicleIndex, setEditingVehicleIndex] = useState<number | null>(null);
-  const [vehicleForm, setVehicleForm] = useState({ reg_no: "", make: "", model: "", year: "", cai_no: "" });
+  const [vehicleForm, setVehicleForm] = useState({ reg_no: "", make: "", model: "", year: "", cai_no: "", oil_grade: "" });
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [paymentForm, setPaymentForm] = useState({ date: new Date().toISOString().split("T")[0], amount: "", method: "Cash", type: "Pending Payment", notes: "" });
+  const [paymentForm, setPaymentForm] = useState({
+    date: new Date().toISOString().split("T")[0],
+    amount: "", method: "Cash", type: "Pending Payment", notes: ""
+  });
 
   const emptyForm = {
     name: "", phone: "", altPhone: "", email: "", address: "", city: "",
@@ -35,12 +38,12 @@ export default function CustomersPage() {
   useEffect(() => {
     const stored = localStorage.getItem("concept_autos_customers");
     if (stored) {
-      try { setCustomers(JSON.parse(stored)); } catch {}
+      try { setCustomers(JSON.parse(stored)); } catch { }
     } else {
       fetch(`${process.env.NEXT_PUBLIC_API_URL}/customers.php`)
         .then(res => res.json())
         .then(data => { if (Array.isArray(data)) setCustomers(data); })
-        .catch(() => {});
+        .catch(() => { });
     }
   }, []);
 
@@ -53,29 +56,55 @@ export default function CustomersPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = { ...form, vehicles: modalVehicles };
+    const today = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    const openingAmt = Number(form.openingReceivable) || 0;
 
     if (editing) {
+      const payload = { ...form, vehicles: modalVehicles };
       const updated = { ...editing, ...payload };
       setCustomers(customers.map(c => c.id === editing.id ? updated : c));
       if (viewingCustomer?.id === editing.id) setViewingCustomer(updated);
+
+      // Sync to API
+      try {
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/customers.php`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: updated.id, ...updated })
+        });
+      } catch { }
+
       toast.success("Customer updated!");
     } else {
-      const newCust = {
-        ...payload,
+      // New customer with optional opening ledger entry
+      const openingLedger = openingAmt > 0 ? [{
         id: Date.now(),
-        total_purchases: Number(form.openingReceivable) || 0,
-        total_pending: Number(form.openingReceivable) || 0,
+        date: today,
+        type: "Sale",
+        invoiceNo: "OPENING",
+        amount: openingAmt,
+        method: "-",
+        notes: "Opening receivable balance",
+      }] : [];
+
+      const newCust = {
+        ...form,
+        vehicles: modalVehicles,
+        id: Date.now(),
+        total_purchases: openingAmt,
+        total_pending: openingAmt,
         cai_numbers: [],
-        payment_history: [],
+        ledger: openingLedger,
       };
+
       try {
         await fetch(`${process.env.NEXT_PUBLIC_API_URL}/customers.php`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({ ...form, vehicles: modalVehicles })
         });
-      } catch {}
+      } catch { }
+
       setCustomers([newCust, ...customers]);
       toast.success("Customer added!");
     }
@@ -85,10 +114,10 @@ export default function CustomersPage() {
   const openVehicleForm = (index: number | null = null) => {
     if (index !== null) {
       setEditingVehicleIndex(index);
-      setVehicleForm(modalVehicles[index]);
+      setVehicleForm({ ...modalVehicles[index], oil_grade: modalVehicles[index].oil_grade || "" });
     } else {
       setEditingVehicleIndex(null);
-      setVehicleForm({ reg_no: "", make: "", model: "", year: "", cai_no: "" });
+      setVehicleForm({ reg_no: "", make: "", model: "", year: "", cai_no: "", oil_grade: "" });
     }
     setIsVehicleFormOpen(true);
   };
@@ -118,6 +147,7 @@ export default function CustomersPage() {
   const handleDelete = (id: number) => {
     if (!confirm("Delete this customer?")) return;
     setCustomers(customers.filter(c => c.id !== id));
+    if (viewingCustomer?.id === id) setViewingCustomer(null);
     toast.success("Customer deleted.");
   };
 
@@ -164,40 +194,59 @@ export default function CustomersPage() {
     setIsVehicleFormOpen(false);
   };
 
+  // ===== ADD PAYMENT → adds a "Payment" entry to the ledger =====
   const handleAddPayment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!viewingCustomer) return;
     const amt = Number(paymentForm.amount);
     if (!amt || amt <= 0) return toast.error("Enter a valid amount");
 
-    const newPayment = {
+    const newEntry = {
       id: Date.now(),
       date: paymentForm.date,
+      type: "Payment",
       invoiceNo: "-",
       amount: amt,
       method: paymentForm.method,
-      type: paymentForm.type,
-      notes: paymentForm.notes,
+      notes: paymentForm.notes || paymentForm.type,
     };
 
     const updated = {
       ...viewingCustomer,
-      payment_history: [...(viewingCustomer.payment_history || []), newPayment],
-      total_pending: Math.max(0, Number(viewingCustomer.total_pending || 0) - (paymentForm.type === "Pending Payment" ? amt : 0)),
+      total_pending: Math.max(0, Number(viewingCustomer.total_pending || 0) - amt),
+      ledger: [...(viewingCustomer.ledger || []), newEntry],
     };
 
     setCustomers(customers.map(c => c.id === viewingCustomer.id ? updated : c));
     setViewingCustomer(updated);
     setIsPaymentModalOpen(false);
-    setPaymentForm({ date: new Date().toISOString().split("T")[0], amount: "", method: "Cash", type: "Pending Payment", notes: "" });
+    setPaymentForm({
+      date: new Date().toISOString().split("T")[0],
+      amount: "", method: "Cash", type: "Pending Payment", notes: ""
+    });
     toast.success(`Payment of Rs. ${amt.toLocaleString()} recorded!`);
   };
 
-  // ============ PROFILE VIEW ============
+  // ================================================================
+  // ============ PROFILE VIEW ======================================
+  // ================================================================
   if (viewingCustomer) {
     const c = customers.find(x => x.id === viewingCustomer.id) || viewingCustomer;
-    const history = c.payment_history || [];
-    const totalPaid = history.reduce((s: number, p: any) => s + Number(p.amount), 0);
+
+    // Ledger sorted by date (oldest first for running balance)
+    const ledger = [...(c.ledger || [])].sort((a: any, b: any) =>
+      new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+
+    const totalSales = ledger
+      .filter((l: any) => l.type === "Sale")
+      .reduce((s: number, l: any) => s + Number(l.amount || 0), 0);
+
+    const totalPaid = ledger
+      .filter((l: any) => l.type === "Payment")
+      .reduce((s: number, l: any) => s + Number(l.amount || 0), 0);
+
+    let runningBalance = 0;
 
     return (
       <div className="space-y-6">
@@ -205,8 +254,9 @@ export default function CustomersPage() {
           <ArrowLeft className="w-4 h-4" /> Back to Customers
         </button>
 
+        {/* ============ CUSTOMER HEADER ============ */}
         <div className="bg-white border border-zinc-200 rounded-xl shadow-sm p-6">
-          <div className="flex items-start justify-between">
+          <div className="flex items-start justify-between flex-wrap gap-3">
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-zinc-900">{c.name}</h1>
               <div className="flex items-center gap-4 mt-2 text-sm text-zinc-600 flex-wrap">
@@ -230,10 +280,10 @@ export default function CustomersPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-4 mt-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
             <div className="bg-zinc-50 p-4 rounded-lg">
-              <p className="text-xs text-zinc-500">Total Spent</p>
-              <p className="text-xl font-bold text-zinc-900 font-digit mt-1">Rs. {Number(c.total_purchases || 0).toLocaleString()}</p>
+              <p className="text-xs text-zinc-500">Total Sales</p>
+              <p className="text-xl font-bold text-zinc-900 font-digit mt-1">Rs. {totalSales.toLocaleString()}</p>
             </div>
             <div className="bg-zinc-50 p-4 rounded-lg">
               <p className="text-xs text-zinc-500">Total Paid</p>
@@ -241,8 +291,8 @@ export default function CustomersPage() {
             </div>
             <div className="bg-zinc-50 p-4 rounded-lg">
               <p className="text-xs text-zinc-500">Pending Balance</p>
-              <p className={`text-xl font-bold font-digit mt-1 ${Number(c.total_pending) > 0 ? "text-danger" : "text-success"}`}>
-                Rs. {Number(c.total_pending || 0).toLocaleString()}
+              <p className={`text-xl font-bold font-digit mt-1 ${Math.max(0, totalSales - totalPaid) > 0 ? "text-danger" : "text-success"}`}>
+                Rs. {Math.max(0, totalSales - totalPaid).toLocaleString()}
               </p>
             </div>
             <div className="bg-zinc-50 p-4 rounded-lg">
@@ -255,7 +305,75 @@ export default function CustomersPage() {
           </div>
         </div>
 
-        {/* Vehicles */}
+        {/* ============ LEDGER ============ */}
+        <div className="bg-white border border-zinc-200 rounded-xl shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between p-5 border-b border-zinc-200">
+            <h2 className="text-lg font-semibold text-zinc-900 flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-primary" /> Ledger ({ledger.length} entries)
+            </h2>
+            <button
+              onClick={() => setIsPaymentModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-success hover:bg-success-hover text-white text-xs font-medium rounded-lg cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add Payment
+            </button>
+          </div>
+
+          {ledger.length === 0 ? (
+            <div className="p-8 text-center text-zinc-500 text-sm">
+              No transactions yet. Sales from POS will appear here automatically.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left min-w-[760px]">
+                <thead className="bg-zinc-50 text-zinc-500">
+                  <tr>
+                    <th className="px-5 py-3 font-medium">Date</th>
+                    <th className="px-5 py-3 font-medium">Invoice</th>
+                    <th className="px-5 py-3 font-medium">Type</th>
+                    <th className="px-5 py-3 font-medium">Method</th>
+                    <th className="px-5 py-3 font-medium">Notes</th>
+                    <th className="px-5 py-3 font-medium text-right text-danger">Debit</th>
+                    <th className="px-5 py-3 font-medium text-right text-success">Credit</th>
+                    <th className="px-5 py-3 font-medium text-right">Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-200">
+                  {ledger.map((l: any) => {
+                    const isSale = l.type === "Sale";
+                    runningBalance += isSale ? Number(l.amount) : -Number(l.amount);
+                    return (
+                      <tr key={l.id} className="hover:bg-zinc-50">
+                        <td className="px-5 py-3 text-zinc-700 font-digit flex items-center gap-1.5">
+                          <Calendar className="w-3 h-3 text-zinc-400" /> {l.date}
+                        </td>
+                        <td className="px-5 py-3 text-zinc-600 font-digit">{l.invoiceNo || "-"}</td>
+                        <td className="px-5 py-3">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isSale ? "bg-primary/10 text-primary" : "bg-success/10 text-success"}`}>
+                            {l.type}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3 text-zinc-600">{l.method || "-"}</td>
+                        <td className="px-5 py-3 text-zinc-500 text-xs">{l.notes || "-"}</td>
+                        <td className="px-5 py-3 text-right font-digit text-danger">
+                          {isSale ? `Rs. ${Number(l.amount).toLocaleString()}` : "-"}
+                        </td>
+                        <td className="px-5 py-3 text-right font-digit text-success">
+                          {!isSale ? `Rs. ${Number(l.amount).toLocaleString()}` : "-"}
+                        </td>
+                        <td className={`px-5 py-3 text-right font-bold font-digit ${runningBalance > 0 ? "text-danger" : "text-success"}`}>
+                          Rs. {runningBalance.toLocaleString()}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* ============ VEHICLES ============ */}
         <div className="bg-white border border-zinc-200 rounded-xl shadow-sm overflow-hidden">
           <div className="flex items-center justify-between p-5 border-b border-zinc-200">
             <h2 className="text-lg font-semibold text-zinc-900 flex items-center gap-2">
@@ -274,84 +392,36 @@ export default function CustomersPage() {
               No vehicles yet. Click <strong>"Add / Manage Vehicles"</strong> above.
             </div>
           ) : (
-            <table className="w-full text-sm text-left">
-              <thead className="bg-zinc-50 text-zinc-500">
-                <tr>
-                  <th className="px-6 py-3 font-medium">Vehicle No</th>
-                  <th className="px-6 py-3 font-medium">Make</th>
-                  <th className="px-6 py-3 font-medium">Model</th>
-                  <th className="px-6 py-3 font-medium">Year</th>
-                  <th className="px-6 py-3 font-medium">CAI File No</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-200">
-                {c.vehicles.map((v: any) => (
-                  <tr key={v.id} className="hover:bg-zinc-50">
-                    <td className="px-6 py-4 font-medium text-zinc-900 font-digit">{v.reg_no}</td>
-                    <td className="px-6 py-4 text-zinc-600">{v.make}</td>
-                    <td className="px-6 py-4 text-zinc-600">{v.model}</td>
-                    <td className="px-6 py-4 text-zinc-600 font-digit">{v.year}</td>
-                    <td className="px-6 py-4 text-primary font-digit">{v.cai_no || "-"}</td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left min-w-[720px]">
+                <thead className="bg-zinc-50 text-zinc-500">
+                  <tr>
+                    <th className="px-6 py-3 font-medium">Vehicle No</th>
+                    <th className="px-6 py-3 font-medium">Make</th>
+                    <th className="px-6 py-3 font-medium">Model</th>
+                    <th className="px-6 py-3 font-medium">Year</th>
+                    <th className="px-6 py-3 font-medium">Oil Grade</th>
+                    <th className="px-6 py-3 font-medium">CAI File No</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        {/* Payment History */}
-        <div className="bg-white border border-zinc-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between p-5 border-b border-zinc-200">
-            <h2 className="text-lg font-semibold text-zinc-900 flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-primary" /> Payment History ({history.length})
-            </h2>
-            <button
-              onClick={() => setIsPaymentModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 bg-success hover:bg-success-hover text-white text-xs font-medium rounded-lg cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" /> Add Payment
-            </button>
-          </div>
-
-          {history.length === 0 ? (
-            <div className="p-8 text-center text-zinc-500 text-sm">
-              No payments recorded yet.
+                </thead>
+                <tbody className="divide-y divide-zinc-200">
+                  {c.vehicles.map((v: any) => (
+                    <tr key={v.id} className="hover:bg-zinc-50">
+                      <td className="px-6 py-4 font-medium text-zinc-900 font-digit">{v.reg_no}</td>
+                      <td className="px-6 py-4 text-zinc-600">{v.make}</td>
+                      <td className="px-6 py-4 text-zinc-600">{v.model}</td>
+                      <td className="px-6 py-4 text-zinc-600 font-digit">{v.year}</td>
+                      <td className="px-6 py-4 text-zinc-700 font-digit">{v.oil_grade || "-"}</td>
+                      <td className="px-6 py-4 text-primary font-digit">{v.cai_no || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ) : (
-            <table className="w-full text-sm text-left">
-              <thead className="bg-zinc-50 text-zinc-500">
-                <tr>
-                  <th className="px-6 py-3 font-medium">Date</th>
-                  <th className="px-6 py-3 font-medium">Invoice #</th>
-                  <th className="px-6 py-3 font-medium">Type</th>
-                  <th className="px-6 py-3 font-medium">Method</th>
-                  <th className="px-6 py-3 font-medium">Notes</th>
-                  <th className="px-6 py-3 font-medium text-right">Amount</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-200">
-                {history.map((p: any) => (
-                  <tr key={p.id} className="hover:bg-zinc-50">
-                    <td className="px-6 py-4 text-zinc-700 font-digit flex items-center gap-1.5">
-                      <Calendar className="w-3 h-3 text-zinc-400" /> {p.date}
-                    </td>
-                    <td className="px-6 py-4 text-zinc-600 font-digit">{p.invoiceNo || "-"}</td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${p.type === "Pending Payment" ? "bg-amber-100 text-amber-800" : "bg-primary/10 text-primary"}`}>
-                        {p.type}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-zinc-600">{p.method}</td>
-                    <td className="px-6 py-4 text-zinc-500 text-xs">{p.notes || "-"}</td>
-                    <td className="px-6 py-4 text-right font-bold text-success font-digit">Rs. {Number(p.amount).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           )}
         </div>
 
-        {/* Payment Modal */}
+        {/* ============ PAYMENT MODAL ============ */}
         {isPaymentModalOpen && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[70]">
             <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6">
@@ -407,7 +477,9 @@ export default function CustomersPage() {
     );
   }
 
-  // ============ LIST VIEW ============
+  // ================================================================
+  // ============ LIST VIEW =========================================
+  // ================================================================
   const filtered = customers.filter(c =>
     c.name?.toLowerCase().includes(search.toLowerCase()) ||
     c.phone?.includes(search) ||
@@ -437,64 +509,66 @@ export default function CustomersPage() {
             />
           </div>
         </div>
-        <table className="w-full text-sm text-left">
-          <thead className="bg-zinc-50 text-zinc-500">
-            <tr>
-              <th className="px-6 py-3 font-medium">Customer Name</th>
-              <th className="px-6 py-3 font-medium">Phone</th>
-              <th className="px-6 py-3 font-medium">Vehicles</th>
-              <th className="px-6 py-3 font-medium">Total Spent</th>
-              <th className="px-6 py-3 font-medium text-danger">Pending</th>
-              <th className="px-6 py-3 font-medium text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-200">
-            {filtered.length === 0 ? (
-              <tr><td colSpan={6} className="px-6 py-10 text-center text-zinc-500">No customers found.</td></tr>
-            ) : filtered.map((customer) => (
-              <tr key={customer.id} className="hover:bg-zinc-50 transition-colors">
-                <td className="px-6 py-4 font-medium text-zinc-900">
-                  <button onClick={() => setViewingCustomer(customer)} className="hover:text-primary hover:underline cursor-pointer text-left">
-                    {customer.name}
-                  </button>
-                </td>
-                <td className="px-6 py-4 text-zinc-600 flex items-center gap-2 font-digit">
-                  <Phone className="w-3 h-3 text-zinc-400" /> {customer.phone}
-                </td>
-                <td className="px-6 py-4 text-zinc-600">
-                  <button
-                    onClick={() => openEditModal(customer)}
-                    className="text-xs bg-zinc-100 hover:bg-primary/10 hover:text-primary px-2.5 py-1.5 rounded font-digit cursor-pointer flex items-center gap-1"
-                  >
-                    <Car className="w-3 h-3" /> {customer.vehicles?.length || 0} vehicle(s)
-                  </button>
-                </td>
-                <td className="px-6 py-4 font-medium text-zinc-900 font-digit">
-                  Rs. {Number(customer.total_purchases || 0).toLocaleString()}
-                </td>
-                <td className={`px-6 py-4 font-bold font-digit ${Number(customer.total_pending || 0) > 0 ? "text-danger" : "text-success"}`}>
-                  Rs. {Number(customer.total_pending || 0).toLocaleString()}
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <button onClick={() => sendWhatsApp(customer.whatsapp || customer.phone, customer.name)} className="p-1.5 text-zinc-400 hover:text-success hover:bg-success/10 rounded-md cursor-pointer" title="WhatsApp">
-                      <MessageCircle className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => openEditModal(customer)} className="p-1.5 text-zinc-400 hover:text-primary hover:bg-primary/10 rounded-md cursor-pointer" title="Edit">
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => handleDelete(customer.id)} className="p-1.5 text-zinc-400 hover:text-danger hover:bg-danger/10 rounded-md cursor-pointer" title="Delete">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left min-w-[760px]">
+            <thead className="bg-zinc-50 text-zinc-500">
+              <tr>
+                <th className="px-6 py-3 font-medium">Customer Name</th>
+                <th className="px-6 py-3 font-medium">Phone</th>
+                <th className="px-6 py-3 font-medium">Vehicles</th>
+                <th className="px-6 py-3 font-medium">Total Spent</th>
+                <th className="px-6 py-3 font-medium text-danger">Pending</th>
+                <th className="px-6 py-3 font-medium text-right">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-zinc-200">
+              {filtered.length === 0 ? (
+                <tr><td colSpan={6} className="px-6 py-10 text-center text-zinc-500">No customers found.</td></tr>
+              ) : filtered.map((customer) => (
+                <tr key={customer.id} className="hover:bg-zinc-50 transition-colors">
+                  <td className="px-6 py-4 font-medium text-zinc-900">
+                    <button onClick={() => setViewingCustomer(customer)} className="hover:text-primary hover:underline cursor-pointer text-left">
+                      {customer.name}
+                    </button>
+                  </td>
+                  <td className="px-6 py-4 text-zinc-600 flex items-center gap-2 font-digit">
+                    <Phone className="w-3 h-3 text-zinc-400" /> {customer.phone}
+                  </td>
+                  <td className="px-6 py-4 text-zinc-600">
+                    <button
+                      onClick={() => openEditModal(customer)}
+                      className="text-xs bg-zinc-100 hover:bg-primary/10 hover:text-primary px-2.5 py-1.5 rounded font-digit cursor-pointer flex items-center gap-1"
+                    >
+                      <Car className="w-3 h-3" /> {customer.vehicles?.length || 0} vehicle(s)
+                    </button>
+                  </td>
+                  <td className="px-6 py-4 font-medium text-zinc-900 font-digit">
+                    Rs. {Number(customer.total_purchases || 0).toLocaleString()}
+                  </td>
+                  <td className={`px-6 py-4 font-bold font-digit ${Number(customer.total_pending || 0) > 0 ? "text-danger" : "text-success"}`}>
+                    Rs. {Number(customer.total_pending || 0).toLocaleString()}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button onClick={() => sendWhatsApp(customer.whatsapp || customer.phone, customer.name)} className="p-1.5 text-zinc-400 hover:text-success hover:bg-success/10 rounded-md cursor-pointer" title="WhatsApp">
+                        <MessageCircle className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => openEditModal(customer)} className="p-1.5 text-zinc-400 hover:text-primary hover:bg-primary/10 rounded-md cursor-pointer" title="Edit">
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => handleDelete(customer.id)} className="p-1.5 text-zinc-400 hover:text-danger hover:bg-danger/10 rounded-md cursor-pointer" title="Delete">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* ============ ADD / EDIT CUSTOMER MODAL (ILShop layout) ============ */}
+      {/* ============ ADD / EDIT CUSTOMER MODAL ============ */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-xl shadow-lg w-full max-w-3xl my-8">
@@ -511,8 +585,7 @@ export default function CustomersPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="p-5 space-y-4">
-              {/* Row 1: Name + Mobile */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">Customer Name</label>
                   <input required type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-2 text-sm border-2 border-orange-300 rounded focus:ring-1 focus:ring-orange-400 focus:outline-none" />
@@ -523,8 +596,7 @@ export default function CustomersPage() {
                 </div>
               </div>
 
-              {/* Row 2: Alt Mobile + Email */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">Alternate Mobile</label>
                   <input type="tel" value={form.altPhone} onChange={e => setForm({ ...form, altPhone: e.target.value })} className="w-full px-3 py-2 text-sm border border-zinc-300 rounded focus:ring-1 focus:ring-primary focus:outline-none font-digit" />
@@ -535,8 +607,7 @@ export default function CustomersPage() {
                 </div>
               </div>
 
-              {/* Row 3: Address + City */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">Address</label>
                   <input type="text" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} className="w-full px-3 py-2 text-sm border border-zinc-300 rounded focus:ring-1 focus:ring-primary focus:outline-none" />
@@ -547,8 +618,7 @@ export default function CustomersPage() {
                 </div>
               </div>
 
-              {/* Row 4: Opening Receivable + Credit Limit */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">Opening Receivable</label>
                   <input type="number" value={form.openingReceivable} onChange={e => setForm({ ...form, openingReceivable: e.target.value })} className="w-full px-3 py-2 text-sm border border-zinc-300 rounded focus:ring-1 focus:ring-primary focus:outline-none font-digit" />
@@ -559,8 +629,7 @@ export default function CustomersPage() {
                 </div>
               </div>
 
-              {/* Row 5: Credit Days + Loyalty */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">Credit Days</label>
                   <input type="number" value={form.creditDays} onChange={e => setForm({ ...form, creditDays: e.target.value })} className="w-full px-3 py-2 text-sm border border-zinc-300 rounded focus:ring-1 focus:ring-primary focus:outline-none font-digit" />
@@ -576,13 +645,11 @@ export default function CustomersPage() {
                 </div>
               </div>
 
-              {/* Notes */}
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 mb-1">Notes</label>
                 <textarea rows={3} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="w-full px-3 py-2 text-sm border border-zinc-300 rounded focus:ring-1 focus:ring-primary focus:outline-none" />
               </div>
 
-              {/* Status */}
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 mb-1">Status</label>
                 <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="w-full px-3 py-2 text-sm border border-zinc-300 rounded cursor-pointer">
@@ -608,13 +675,14 @@ export default function CustomersPage() {
                     No vehicles yet. Click <strong>Add Vehicle</strong>.
                   </div>
                 ) : (
-                  <div className="border border-zinc-200 rounded-lg overflow-hidden">
-                    <table className="w-full text-sm text-left">
+                  <div className="border border-zinc-200 rounded-lg overflow-x-auto">
+                    <table className="w-full text-sm text-left min-w-[560px]">
                       <thead className="bg-zinc-50 text-zinc-500">
                         <tr>
                           <th className="px-4 py-2 font-medium">Vehicle No</th>
                           <th className="px-4 py-2 font-medium">Make / Model</th>
                           <th className="px-4 py-2 font-medium">Year</th>
+                          <th className="px-4 py-2 font-medium">Oil Grade</th>
                           <th className="px-4 py-2 font-medium">CAI File No</th>
                           <th className="px-4 py-2 font-medium text-right">Action</th>
                         </tr>
@@ -625,6 +693,7 @@ export default function CustomersPage() {
                             <td className="px-4 py-2.5 font-medium text-zinc-900 font-digit">{v.reg_no}</td>
                             <td className="px-4 py-2.5 text-zinc-600">{v.make} {v.model}</td>
                             <td className="px-4 py-2.5 text-zinc-600 font-digit">{v.year}</td>
+                            <td className="px-4 py-2.5 text-zinc-700 font-digit">{v.oil_grade || "-"}</td>
                             <td className="px-4 py-2.5 text-primary font-digit">{v.cai_no || "-"}</td>
                             <td className="px-4 py-2.5 text-right">
                               <div className="flex items-center justify-end gap-1">
@@ -644,7 +713,6 @@ export default function CustomersPage() {
                 )}
               </div>
 
-              {/* Action buttons */}
               <div className="flex justify-end gap-3 pt-4 border-t border-zinc-200">
                 <button type="button" onClick={closeModal} className="px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 rounded cursor-pointer">Cancel</button>
                 <button type="submit" className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded cursor-pointer">
@@ -690,6 +758,16 @@ export default function CustomersPage() {
                   <label className="block text-sm font-medium text-zinc-700 mb-1">CAI File No</label>
                   <input type="text" value={vehicleForm.cai_no} onChange={e => setVehicleForm({ ...vehicleForm, cai_no: e.target.value })} placeholder="e.g. CAI-001" className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none font-digit" />
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">Oil Grade</label>
+                <input
+                  type="text"
+                  value={vehicleForm.oil_grade}
+                  onChange={e => setVehicleForm({ ...vehicleForm, oil_grade: e.target.value })}
+                  placeholder="e.g. 5W-30, 10W-40"
+                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none font-digit"
+                />
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setIsVehicleFormOpen(false)} className="px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 rounded-lg cursor-pointer">Cancel</button>

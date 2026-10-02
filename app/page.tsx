@@ -17,7 +17,7 @@ export default function LoginPage() {
     setIsSubmitting(true);
     await new Promise((resolve) => setTimeout(resolve, 800));
     login(email || "admin@conceptpos.com");
-    router.push("/dashboard");
+    router.push("/pos");
   };
 
   return (
