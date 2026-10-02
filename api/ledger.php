@@ -1,35 +1,5 @@
 <?php
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    header("Access-Control-Allow-Origin: *");
-    header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
-    header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
-    http_response_code(200);
-    exit();
-}
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
-header("Content-Type: application/json; charset=UTF-8");
-
-$host = "localhost";
-$db_name = "concept_autos_pos";
-$username = "root";
-$password = "";
-
-try {
-    $conn = new PDO("mysql:host=$host;dbname=$db_name", $username, $password);
-    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch (PDOException $e) {
-    http_response_code(500);
-    echo json_encode(["error" => "DB connection failed: " . $e->getMessage()]);
-    exit();
-}
-
-function respond($data, $code = 200) {
-    http_response_code($code);
-    echo json_encode($data);
-    exit();
-}
+require_once __DIR__ . '/config/db.php';
 
 try {
     $method = $_SERVER['REQUEST_METHOD'];
@@ -37,13 +7,13 @@ try {
     if ($method === 'GET') {
         $entries = [];
 
-        // 1. From invoices — cash in (paid_amount) + pending
+        // 1. Invoices → cash in + pending
         $stmt = $conn->query("SELECT i.*, c.name as customer_name, v.reg_no as vehicle_no
                               FROM invoices i
                               LEFT JOIN customers c ON i.customer_id = c.id
                               LEFT JOIN vehicles v ON i.vehicle_id = v.id
                               ORDER BY i.created_at DESC");
-        $invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $invoices = $stmt->fetchAll();
 
         foreach ($invoices as $inv) {
             $paid = (float)($inv['paid_amount'] ?? 0);
@@ -77,11 +47,9 @@ try {
             }
         }
 
-        // 2. From waste_oil — cash in
+        // 2. Waste oil sales → cash in
         $stmt = $conn->query("SELECT * FROM waste_oil ORDER BY created_at DESC");
-        $waste = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        foreach ($waste as $w) {
+        foreach ($stmt->fetchAll() as $w) {
             if ($w['source'] === 'Sale' && (float)($w['quantity_ml'] ?? 0) > 0) {
                 $entries[] = [
                     "id" => "waste-" . $w['id'],
@@ -97,12 +65,10 @@ try {
             }
         }
 
-        // 3. From ledger table (custom entries, e.g. supplier payments recorded manually)
+        // 3. Custom ledger entries (skip if table missing)
         try {
             $stmt = $conn->query("SELECT * FROM ledger ORDER BY date DESC, id DESC");
-            $custom = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            foreach ($custom as $c) {
+            foreach ($stmt->fetchAll() as $c) {
                 $entries[] = [
                     "id" => "custom-" . $c['id'],
                     "date" => date("d M Y", strtotime($c['date'])),
@@ -116,10 +82,9 @@ try {
                 ];
             }
         } catch (PDOException $e) {
-            // ledger table doesn't exist — that's fine, skip
+            // ledger table doesn't exist — skip silently
         }
 
-        // Sort by date DESC
         usort($entries, function($a, $b) {
             return strtotime($b['sortDate'] ?? $b['date']) - strtotime($a['sortDate'] ?? $a['date']);
         });
@@ -128,7 +93,6 @@ try {
     }
 
     elseif ($method === 'POST') {
-        // Add a custom ledger entry
         $data = json_decode(file_get_contents("php://input"), true);
         if (!is_array($data)) respond(["error" => "Invalid JSON"], 400);
 

@@ -1,36 +1,5 @@
 <?php
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    header("Access-Control-Allow-Origin: *");
-    header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
-    header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
-    header("Access-Control-Max-Age: 86400");
-    http_response_code(200);
-    exit();
-}
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
-header("Content-Type: application/json; charset=UTF-8");
-
-$host = "localhost";
-$db_name = "concept_autos_pos";
-$username = "root";
-$password = "";
-
-try {
-    $conn = new PDO("mysql:host=$host;dbname=$db_name", $username, $password);
-    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch (PDOException $e) {
-    http_response_code(500);
-    echo json_encode(["error" => "DB connection failed: " . $e->getMessage()]);
-    exit();
-}
-
-function respond($data, $code = 200) {
-    http_response_code($code);
-    echo json_encode($data);
-    exit();
-}
+require_once __DIR__ . '/config/db.php';
 
 try {
     $method = $_SERVER['REQUEST_METHOD'];
@@ -39,10 +8,10 @@ try {
         if (isset($_GET['id'])) {
             $stmt = $conn->prepare("SELECT * FROM products WHERE id = ?");
             $stmt->execute([$_GET['id']]);
-            respond($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
+            respond($stmt->fetch() ?: null);
         } else {
             $stmt = $conn->query("SELECT * FROM products ORDER BY name ASC");
-            respond($stmt->fetchAll(PDO::FETCH_ASSOC));
+            respond($stmt->fetchAll());
         }
     }
 
