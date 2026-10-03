@@ -1,6 +1,7 @@
 "use client";
 
-import { X, Printer, Download, MessageCircle } from "lucide-react";
+import { useState } from "react";
+import { X, Printer, Download, MessageCircle, FileText } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 
@@ -10,7 +11,11 @@ interface PrintInvoiceModalProps {
   invoice: any;
 }
 
+type ShareMode = "pdf" | "message" | "both";
+
 export default function PrintInvoiceModal({ isOpen, onClose, invoice }: PrintInvoiceModalProps) {
+  const [showShareMenu, setShowShareMenu] = useState(false);
+
   if (!isOpen || !invoice) return null;
 
   const items = invoice.items || [];
@@ -33,30 +38,18 @@ export default function PrintInvoiceModal({ isOpen, onClose, invoice }: PrintInv
     const pw = doc.internal.pageSize.getWidth();
     let y = 8;
 
-    doc.setFontSize(16);
+    doc.setFontSize(16); doc.setFont("helvetica", "bold");
+    doc.text("Concept Autos", pw / 2, y, { align: "center" }); y += 5;
+    doc.setFontSize(8); doc.setFont("helvetica", "normal");
+    doc.text("An Authentic Lubricant in Town", pw / 2, y, { align: "center" }); y += 4;
+    doc.text("Site No 39,40 Old Nadra Office Road", pw / 2, y, { align: "center" }); y += 3.5;
+    doc.text("Zia Shaheed Chowk, Haroonabad", pw / 2, y, { align: "center" }); y += 3.5;
+    doc.text(`Ph: ${STORE_PHONE} | WA: ${STORE_WA}`, pw / 2, y, { align: "center" }); y += 3.5;
     doc.setFont("helvetica", "bold");
-    doc.text("Concept Autos", pw / 2, y, { align: "center" });
-    y += 5;
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
-    doc.text("An Authentic Lubricant in Town", pw / 2, y, { align: "center" });
-    y += 4;
-    doc.text("Site No 39,40 Old Nadra Office Road", pw / 2, y, { align: "center" });
-    y += 3.5;
-    doc.text("Zia Shaheed Chowk, Haroonabad", pw / 2, y, { align: "center" });
-    y += 3.5;
-    doc.text(`Ph: ${STORE_PHONE} | WA: ${STORE_WA}`, pw / 2, y, { align: "center" });
-    y += 3.5;
-    doc.setFont("helvetica", "bold");
-    doc.text("WWW.CONCEPTAUTOS.PK", pw / 2, y, { align: "center" });
-    y += 4;
-    doc.setLineWidth(0.3);
-    doc.line(4, y, pw - 4, y);
-    y += 4;
+    doc.text("WWW.CONCEPTAUTOS.PK", pw / 2, y, { align: "center" }); y += 4;
+    doc.setLineWidth(0.3); doc.line(4, y, pw - 4, y); y += 4;
 
-    // Invoice + date
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8); doc.setFont("helvetica", "bold");
     doc.rect(4, y - 1, pw - 8, 10);
     doc.text("INVOICE", 6, y + 2);
     doc.text("DATE", pw - 6, y + 2, { align: "right" });
@@ -65,71 +58,51 @@ export default function PrintInvoiceModal({ isOpen, onClose, invoice }: PrintInv
     doc.text(String(invoice.date), pw - 6, y + 6.5, { align: "right" });
     y += 13;
 
-    // Customer
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "bold");
-    doc.text(String(invoice.customerName || "Walk-in Customer"), 4, y);
-    y += 4;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
+    doc.setFontSize(9); doc.setFont("helvetica", "bold");
+    doc.text(String(invoice.customerName || "Walk-in Customer"), 4, y); y += 4;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8);
     if (invoice.customerPhone) { doc.text(String(invoice.customerPhone), 4, y); y += 3.5; }
     if (invoice.dockStation) { doc.text(`Dock: ${invoice.dockStation}`, 4, y); y += 3.5; }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(8);
     doc.rect(pw - 26, y - 8, 22, 5);
     doc.text(String(invoice.paymentType || "CASH").toUpperCase(), pw - 15, y - 4.5, { align: "center" });
     y += 2;
 
-    // Vehicle box
     if (invoice.vehicle) {
       doc.setLineWidth(0.2);
-      doc.rect(4, y, pw - 8, 12);
-      doc.line(pw / 2, y, pw / 2, y + 12);
+      doc.rect(4, y, pw - 8, 12); doc.line(pw / 2, y, pw / 2, y + 12);
       doc.setFontSize(7);
       doc.text("VEHICLE NUMBER", 4 + (pw - 8) / 4, y + 3, { align: "center" });
       doc.text("VEHICLE MODEL", pw / 2 + (pw - 8) / 4, y + 3, { align: "center" });
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9); doc.setFont("helvetica", "bold");
       doc.text(String(invoice.vehicle), 4 + (pw - 8) / 4, y + 9, { align: "center" });
       doc.text(String(invoice.vehicleModel || "-"), pw / 2 + (pw - 8) / 4, y + 9, { align: "center" });
       y += 14;
     }
 
-    // Oil change
     if (currentOdometer || nextOilChange) {
       doc.setLineWidth(0.2);
-      doc.rect(4, y, pw - 8, 12);
-      doc.line(pw / 2, y, pw / 2, y + 12);
-      doc.setFontSize(7);
-      doc.setFont("helvetica", "normal");
+      doc.rect(4, y, pw - 8, 12); doc.line(pw / 2, y, pw / 2, y + 12);
+      doc.setFontSize(7); doc.setFont("helvetica", "normal");
       doc.text("CURRENT READING", 4 + (pw - 8) / 4, y + 3, { align: "center" });
       doc.text("NEXT OIL CHANGE", pw / 2 + (pw - 8) / 4, y + 3, { align: "center" });
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9); doc.setFont("helvetica", "bold");
       doc.text(String(currentOdometer || "-"), 4 + (pw - 8) / 4, y + 9, { align: "center" });
       doc.text(String(nextOilChange || "-"), pw / 2 + (pw - 8) / 4, y + 9, { align: "center" });
       y += 14;
     }
 
-    // Items
-    doc.setLineWidth(0.4);
-    doc.line(4, y, pw - 4, y);
-    y += 4;
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "bold");
+    doc.setLineWidth(0.4); doc.line(4, y, pw - 4, y); y += 4;
+    doc.setFontSize(8); doc.setFont("helvetica", "bold");
     doc.text("Items", 4, y);
     doc.text("Qty", pw - 30, y, { align: "center" });
     doc.text("Price", pw - 20, y, { align: "right" });
     doc.text("Total", pw - 4, y, { align: "right" });
-    y += 3;
-    doc.setLineWidth(0.2);
-    doc.line(4, y, pw - 4, y);
-    y += 4;
+    y += 3; doc.setLineWidth(0.2); doc.line(4, y, pw - 4, y); y += 4;
 
     doc.setFont("helvetica", "normal");
     items.forEach((item: any) => {
-      const name = String(item.name || "").slice(0, 32);
-      doc.text(name, 4, y);
+      doc.text(String(item.name || "").slice(0, 32), 4, y);
       doc.text(String(item.qty), pw - 30, y, { align: "center" });
       doc.text(String(Number(item.discountedPrice || item.price).toLocaleString()), pw - 20, y, { align: "right" });
       doc.text(String((Number(item.discountedPrice || item.price) * item.qty).toLocaleString()), pw - 4, y, { align: "right" });
@@ -144,93 +117,45 @@ export default function PrintInvoiceModal({ isOpen, onClose, invoice }: PrintInv
       y += 4;
     }
 
-    y += 2;
-    doc.setLineWidth(0.3);
-    doc.line(4, y, pw - 4, y);
-    y += 5;
+    y += 2; doc.setLineWidth(0.3); doc.line(4, y, pw - 4, y); y += 5;
 
     const labelX = pw - 34;
     const valueX = pw - 4;
 
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
-    doc.text("Total Bill:", labelX, y);
-    doc.text(String(subtotal.toLocaleString()), valueX, y, { align: "right" });
-    y += 4;
+    doc.setFontSize(8); doc.setFont("helvetica", "normal");
+    doc.text("Total Bill:", labelX, y); doc.text(String(subtotal.toLocaleString()), valueX, y, { align: "right" }); y += 4;
+    if (discount > 0) { doc.text("Discount:", labelX, y); doc.text(`-${discount.toLocaleString()}`, valueX, y, { align: "right" }); y += 4; }
+    if (previousPending > 0) { doc.text("Prev Pending:", labelX, y); doc.text(`+${previousPending.toLocaleString()}`, valueX, y, { align: "right" }); y += 4; }
 
-    if (discount > 0) {
-      doc.text("Discount:", labelX, y);
-      doc.text(`-${discount.toLocaleString()}`, valueX, y, { align: "right" });
-      y += 4;
-    }
-
-    if (previousPending > 0) {
-      doc.text("Prev Pending:", labelX, y);
-      doc.text(`+${previousPending.toLocaleString()}`, valueX, y, { align: "right" });
-      y += 4;
-    }
-
-    doc.setFontSize(10);
+    doc.setFontSize(10); doc.setFont("helvetica", "bold");
+    doc.text("Net Payable:", labelX, y); doc.text(String(total.toLocaleString()), valueX, y, { align: "right" }); y += 5;
+    doc.setFontSize(8); doc.setFont("helvetica", "normal");
+    doc.text("Payment Received:", labelX, y); doc.text(String(paid.toLocaleString()), valueX, y, { align: "right" }); y += 4;
     doc.setFont("helvetica", "bold");
-    doc.text("Net Payable:", labelX, y);
-    doc.text(String(total.toLocaleString()), valueX, y, { align: "right" });
-    y += 5;
+    doc.text("REMAINING BALANCE:", labelX, y); doc.text(String(pending.toLocaleString()), valueX, y, { align: "right" }); y += 6;
 
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
-    doc.text("Payment Received:", labelX, y);
-    doc.text(String(paid.toLocaleString()), valueX, y, { align: "right" });
-    y += 4;
-
-    doc.setFont("helvetica", "bold");
-    doc.text("REMAINING BALANCE:", labelX, y);
-    doc.text(String(pending.toLocaleString()), valueX, y, { align: "right" });
-    y += 6;
-
-    // Footer
-    doc.setLineWidth(0.2);
-    doc.line(4, y, pw - 4, y);
-    y += 4;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
-    doc.text("Keep headlights clean for night driving.", pw / 2, y, { align: "center" });
-    y += 4;
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
+    doc.setLineWidth(0.2); doc.line(4, y, pw - 4, y); y += 4;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7);
+    doc.text("Keep headlights clean for night driving.", pw / 2, y, { align: "center" }); y += 4;
+    doc.setFontSize(10); doc.setFont("helvetica", "bold");
     doc.rect(4, y - 3, pw - 8, 6);
-    doc.text("Thank you for visiting us!", pw / 2, y + 1, { align: "center" });
-    y += 8;
-    doc.setFontSize(6);
-    doc.setFont("helvetica", "normal");
-    doc.text("Only check warranty of oil filter. In case of leakage, only oil filter", pw / 2, y, { align: "center" });
-    y += 2.5;
-    doc.text("will be replaced and no responsibility of any loss.", pw / 2, y, { align: "center" });
-    y += 5;
-    doc.setFont("helvetica", "italic");
-    doc.setFontSize(6);
-    doc.setTextColor(120);
+    doc.text("Thank you for visiting us!", pw / 2, y + 1, { align: "center" }); y += 8;
+    doc.setFontSize(6); doc.setFont("helvetica", "normal");
+    doc.text("Only check warranty of oil filter. In case of leakage, only oil filter", pw / 2, y, { align: "center" }); y += 2.5;
+    doc.text("will be replaced and no responsibility of any loss.", pw / 2, y, { align: "center" }); y += 5;
+    doc.setFont("helvetica", "italic"); doc.setFontSize(6); doc.setTextColor(120);
     doc.text("Software by Zaid Ikram — 0339-2592006", pw / 2, y, { align: "center" });
     doc.setTextColor(0);
 
     return doc;
   };
 
-  const handlePrint = () => { window.print(); };
-
-  const handleDownload = () => {
-    const doc = buildPDF();
-    doc.save(`Invoice-${invoice.invoiceNo}.pdf`);
-    toast.success("PDF downloaded!");
-  };
-
-  const handleShareWhatsApp = async () => {
+  const buildMessage = () => {
     const stored = localStorage.getItem("concept_autos_settings");
     const settings = stored ? JSON.parse(stored) : {};
-
-    const fallback = `🚗 *Concept Autos*\n\nAssalam-o-Alaikum *{name}*,\n\nYour invoice is attached.\n\nInvoice: *{invoice_no}*\nVehicle: {vehicle}\nCurrent Reading: {current_odo}\nNext Oil Change: {next_odo}\nTotal: *Rs. {amount}*\n\nThank you for choosing *Concept Autos*! 🔧`;
-
+    const fallback = `🚗 *Concept Autos*\n\nAssalam-o-Alaikum *{name}*,\n\nYour invoice is ready.\n\nInvoice: *{invoice_no}*\nVehicle: {vehicle}\nCurrent Reading: {current_odo}\nNext Oil Change: {next_odo}\nTotal: *Rs. {amount}*\n\nThank you for choosing *Concept Autos*! 🔧`;
     const template = settings.purchaseTemplate || fallback;
-    let message = template;
+    let msg = template;
     const data: Record<string, string> = {
       name: invoice.customerName || "Customer",
       vehicle: invoice.vehicle || "-",
@@ -242,33 +167,76 @@ export default function PrintInvoiceModal({ isOpen, onClose, invoice }: PrintInv
       phone: STORE_WA,
     };
     Object.entries(data).forEach(([k, v]) => {
-      message = message.replace(new RegExp(`{${k}}`, "g"), v || "-");
+      msg = msg.replace(new RegExp(`{${k}}`, "g"), v || "-");
     });
+    return msg;
+  };
 
+  const handlePrint = () => window.print();
+
+  const handleDownload = () => {
+    const doc = buildPDF();
+    doc.save(`Invoice-${invoice.invoiceNo}.pdf`);
+    toast.success("PDF downloaded!");
+  };
+
+  const handleWhatsApp = async (mode: ShareMode) => {
     const rawPhone = (invoice.customerPhone || "").replace(/\D/g, "");
+    if (!rawPhone) {
+      toast.error("Customer phone number missing");
+      return;
+    }
     let fullPhone = rawPhone;
     if (fullPhone.startsWith("0")) fullPhone = "92" + fullPhone.slice(1);
     if (!fullPhone.startsWith("92")) fullPhone = "92" + fullPhone;
 
+    const message = buildMessage();
+
+    if (mode === "message") {
+      // Message only — no PDF, just open WhatsApp with text
+      window.open(`https://api.whatsapp.com/send?phone=${fullPhone}&text=${encodeURIComponent(message)}`, "_blank");
+      toast.success("WhatsApp opened with message");
+      setShowShareMenu(false);
+      return;
+    }
+
+    // For "pdf" or "both", generate PDF first
     const doc = buildPDF();
     const pdfBlob = doc.output("blob");
     const pdfFile = new File([pdfBlob], `Invoice-${invoice.invoiceNo}.pdf`, { type: "application/pdf" });
 
     if (typeof navigator !== "undefined" && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
       try {
-        await navigator.share({ files: [pdfFile], title: `Invoice ${invoice.invoiceNo}`, text: message });
-        toast.success("Shared via WhatsApp!");
+        if (mode === "both") {
+          await navigator.share({
+            files: [pdfFile],
+            title: `Invoice ${invoice.invoiceNo}`,
+            text: message,
+          });
+          toast.success("Shared PDF + message");
+        } else {
+          // PDF only — no text
+          await navigator.share({
+            files: [pdfFile],
+            title: `Invoice ${invoice.invoiceNo}`,
+          });
+          toast.success("Shared PDF only");
+        }
+        setShowShareMenu(false);
         return;
       } catch (err: any) {
-        if (err?.name === "AbortError") return;
+        if (err?.name === "AbortError") { setShowShareMenu(false); return; }
       }
     }
 
+    // Fallback: download PDF + open WhatsApp
     doc.save(`Invoice-${invoice.invoiceNo}.pdf`);
     setTimeout(() => {
-      window.open(`https://api.whatsapp.com/send?phone=${fullPhone}&text=${encodeURIComponent(message)}`, "_blank");
+      const fallbackText = mode === "pdf" ? "Attached invoice" : message;
+      window.open(`https://api.whatsapp.com/send?phone=${fullPhone}&text=${encodeURIComponent(fallbackText)}`, "_blank");
     }, 700);
-    toast.success("PDF downloaded. WhatsApp opening.");
+    toast.success(mode === "pdf" ? "PDF downloaded. Attach it in WhatsApp." : "PDF downloaded. WhatsApp opening.");
+    setShowShareMenu(false);
   };
 
   return (
@@ -277,12 +245,7 @@ export default function PrintInvoiceModal({ isOpen, onClose, invoice }: PrintInv
         @media print {
           body * { visibility: hidden !important; }
           #printable-invoice, #printable-invoice * { visibility: visible !important; }
-          #printable-invoice {
-            position: absolute !important;
-            left: 0; top: 0;
-            width: 100%;
-            padding: 0; margin: 0;
-          }
+          #printable-invoice { position: absolute !important; left: 0; top: 0; width: 100%; padding: 0; margin: 0; }
           @page { size: 80mm auto; margin: 3mm; }
         }
       `}</style>
@@ -434,7 +397,9 @@ export default function PrintInvoiceModal({ isOpen, onClose, invoice }: PrintInv
                 <div className="border-2 border-zinc-800 py-1.5 text-center text-[13px] font-bold text-zinc-900">
                   Thank you for visiting us!
                 </div>
-                <p className="text-[8px] leading-tight">Only check warranty of oil filter. In case of oil filter leakage, only oil filter will be replaced and no responsibility of any loss.</p>
+                <p className="text-[8px] leading-tight">
+                  Only check warranty of oil filter. In case of oil filter leakage, only oil filter will be replaced and no responsibility of any loss.
+                </p>
               </div>
 
               <div className="mt-4 pt-3 border-t border-dashed border-zinc-300 text-center">
@@ -445,16 +410,60 @@ export default function PrintInvoiceModal({ isOpen, onClose, invoice }: PrintInv
             </div>
           </div>
 
-          <div className="px-4 py-3 border-t border-zinc-200 bg-white rounded-b-2xl flex flex-wrap gap-2 justify-end">
+          {/* Action buttons */}
+          <div className="px-4 py-3 border-t border-zinc-200 bg-white rounded-b-2xl flex flex-wrap gap-2 justify-end relative">
             <button onClick={handlePrint} className="flex items-center gap-1.5 px-4 py-2 bg-[#2a7ab8] hover:bg-[#1f5d8f] text-white text-xs font-semibold rounded-lg cursor-pointer">
               <Printer className="w-3.5 h-3.5" /> Print
             </button>
             <button onClick={handleDownload} className="flex items-center gap-1.5 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-semibold rounded-lg cursor-pointer">
               <Download className="w-3.5 h-3.5" /> PDF
             </button>
-            <button onClick={handleShareWhatsApp} className="flex items-center gap-1.5 px-4 py-2 bg-[#25D366] hover:bg-[#1da851] text-white text-xs font-semibold rounded-lg cursor-pointer">
-              <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
-            </button>
+
+            {/* WhatsApp with dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setShowShareMenu(!showShareMenu)}
+                className="flex items-center gap-1.5 px-4 py-2 bg-[#25D366] hover:bg-[#1da851] text-white text-xs font-semibold rounded-lg cursor-pointer"
+              >
+                <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+              </button>
+
+              {showShareMenu && (
+                <div className="absolute bottom-full right-0 mb-2 w-56 bg-white border border-zinc-200 rounded-lg shadow-lg overflow-hidden z-10">
+                  <button
+                    onClick={() => handleWhatsApp("message")}
+                    className="w-full flex items-center gap-2 px-4 py-3 hover:bg-zinc-50 text-left text-xs border-b border-zinc-100 cursor-pointer"
+                  >
+                    <MessageCircle className="w-4 h-4 text-[#25D366]" />
+                    <div>
+                      <p className="font-semibold text-zinc-900">Message only</p>
+                      <p className="text-[10px] text-zinc-500">No PDF attached</p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => handleWhatsApp("pdf")}
+                    className="w-full flex items-center gap-2 px-4 py-3 hover:bg-zinc-50 text-left text-xs border-b border-zinc-100 cursor-pointer"
+                  >
+                    <FileText className="w-4 h-4 text-[#2a7ab8]" />
+                    <div>
+                      <p className="font-semibold text-zinc-900">PDF only</p>
+                      <p className="text-[10px] text-zinc-500">No message text</p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => handleWhatsApp("both")}
+                    className="w-full flex items-center gap-2 px-4 py-3 hover:bg-zinc-50 text-left text-xs cursor-pointer"
+                  >
+                    <MessageCircle className="w-4 h-4 text-[#25D366]" />
+                    <div>
+                      <p className="font-semibold text-zinc-900">PDF + Message</p>
+                      <p className="text-[10px] text-zinc-500">Both together</p>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+
             <button onClick={onClose} className="flex items-center gap-1.5 px-4 py-2 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 text-xs font-semibold rounded-lg cursor-pointer">
               <X className="w-3.5 h-3.5" /> Close
             </button>

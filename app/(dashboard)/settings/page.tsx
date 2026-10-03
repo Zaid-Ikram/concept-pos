@@ -1,260 +1,313 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Save, Store, MessageSquare, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Save, Store, Users, Plus, Trash2, X, KeyRound, LogOut } from "lucide-react";
 import { toast } from "sonner";
-
-interface Settings {
-  businessName: string;
-  phone: string;
-  contactPerson: string;
-  contactPhone: string;
-  whatsapp: string;
-  address: string;
-  paymentTemplate: string;
-  oilTemplate1: string;
-  oilTemplate2: string;
-  pendingPaymentTemplate: string;
-  purchaseTemplate: string;
-  wasteMethod: string;
-  wastePercent: string;
-}
-
-const defaultSettings: Settings = {
-  businessName: "Concept Autos",
-  phone: "0317.80.81.82.1",
-  contactPerson: "Khalil ur Rehman",
-  contactPhone: "03062876599",
-  whatsapp: "03394303099",
-  address: "Main Boulevard Gulberg III, Lahore",
-  paymentTemplate: `AOA {name}, Concept Autos ki taraf se reminder hai ke aapke account mein Rs. {amount} pending hain. Kindly payment clear kar dein. Thank you.
-
-📞 Contact: Khalil ur Rehman 03062876599`,
-  oilTemplate1: `🚗 *Concept Autos – Haroonabad*
-
-Hi *{name}*, your vehicle *{vehicle}* is due for an oil change.
-
-🛢️ Last Change: {last_date}
-📅 Due: {due_date}
-
-Please visit *Concept Autos & Oil Change Point* for your next service.
-
-📞 {phone}
-
-Thank you for choosing us! 🔧`,
-  oilTemplate2: `🚗 *Concept Autos & Oil Change Point*
-
-Assalam-o-Alaikum *{name}*,
-
-Your vehicle *{vehicle}* is due for its next *oil change/service*.
-
-🛢️ Last Oil Change: *{last_date}*
-📅 Recommended Next Change: *{due_date}*
-🚘 Vehicle: *{model}*
-
-Please visit *Concept Autos & Oil Change Point, Haroonabad* for your next oil change.
-
-📞 Contact: *{phone}*
-
-Thank you for choosing *Concept Autos*! 🔧`,
-  pendingPaymentTemplate: `🚗 *Concept Autos & Oil Change Point – Haroonabad*
-
-Assalam-o-Alaikum *{name}*,
-
-This is a friendly reminder that a payment of *Rs. {amount}* is currently pending for your vehicle *{vehicle}*.
-
-🧾 Invoice No: *{invoice_no}*
-📅 Invoice Date: *{invoice_date}*
-💰 Pending Amount: *Rs. {amount}*
-
-Please clear the outstanding amount at your convenience.
-
-Thank you for choosing *Concept Autos*. 🔧`,
-  purchaseTemplate: `🚗 *Concept Autos & Oil Change Point – Haroonabad*
-
-Assalam-o-Alaikum *{name}*,
-
-Thank you for your purchase from *Concept Autos*! 🙏
-
-🧾 Invoice No: *{invoice_no}*
-🚘 Vehicle: *{vehicle}*
-🛒 Purchase Amount: *Rs. {amount}*
-📅 Date: *{date}*
-
-We appreciate your trust and look forward to serving you again.
-
-*Concept Autos & Oil Change Point* 🔧
-
-📎 Your invoice is attached below.`,
-  wasteMethod: "Fixed Percentage (%)",
-  wastePercent: "95",
-};
+import { useAuth } from "@/context/AuthContext";
+import { useRouter } from "next/navigation";
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState("store");
-  const [settings, setSettings] = useState<Settings>(defaultSettings);
-  const [saved, setSaved] = useState(false);
+  const { user, employees, addEmployee, removeEmployee, logout } = useAuth();
+  const router = useRouter();
 
-  useEffect(() => {
-    const stored = localStorage.getItem("concept_autos_settings");
-    if (stored) {
-      try { setSettings({ ...defaultSettings, ...JSON.parse(stored) }); } catch {}
+  const [activeTab, setActiveTab] = useState<"store" | "employees">("employees");
+
+  const [storeForm, setStoreForm] = useState({
+    businessName: "Concept Autos",
+    phone: "0306-2876599",
+    whatsapp: "0339-4303099",
+    address: "Site No 39,40 Old Nadra Office Road Zia Shaheed Chowk Haroonabad",
+    website: "WWW.CONCEPTAUTOS.PK",
+  });
+
+  const [isAddEmployeeOpen, setIsAddEmployeeOpen] = useState(false);
+  const [newEmp, setNewEmp] = useState({ name: "", username: "", password: "" });
+
+  const handleSaveStore = () => {
+    localStorage.setItem("concept_autos_store", JSON.stringify(storeForm));
+    toast.success("Store info saved!");
+  };
+
+  const handleAddEmployee = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEmp.name.trim() || !newEmp.username.trim() || !newEmp.password.trim()) {
+      return toast.error("All fields required");
     }
-  }, []);
+    const success = addEmployee({
+      name: newEmp.name.trim(),
+      username: newEmp.username.trim().toLowerCase(),
+      password: newEmp.password,
+    });
+    if (success) {
+      toast.success("✅ Employee added!");
+      setIsAddEmployeeOpen(false);
+      setNewEmp({ name: "", username: "", password: "" });
+    } else {
+      toast.error("Username already exists");
+    }
+  };
 
-  const handleSave = () => {
-    localStorage.setItem("concept_autos_settings", JSON.stringify(settings));
-    toast.success("Settings saved successfully!");
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const handleRemoveEmployee = (username: string) => {
+    if (!confirm(`Remove ${username}?`)) return;
+    removeEmployee(username);
+    toast.success("Employee removed");
+  };
+
+  const handleLogout = () => {
+    logout();
+    router.replace("/");
   };
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Settings</h1>
-
-      <div className="flex border-b border-zinc-200 gap-6 flex-wrap">
-        <button onClick={() => setActiveTab("store")} className={`pb-3 text-sm font-medium transition-colors cursor-pointer ${activeTab === 'store' ? 'border-b-2 border-primary text-primary' : 'text-zinc-500 hover:text-zinc-900'}`}>Store Info</button>
-        <button onClick={() => setActiveTab("whatsapp")} className={`pb-3 text-sm font-medium transition-colors cursor-pointer ${activeTab === 'whatsapp' ? 'border-b-2 border-primary text-primary' : 'text-zinc-500 hover:text-zinc-900'}`}>WhatsApp Templates</button>
-        <button onClick={() => setActiveTab("waste")} className={`pb-3 text-sm font-medium transition-colors cursor-pointer ${activeTab === 'waste' ? 'border-b-2 border-primary text-primary' : 'text-zinc-500 hover:text-zinc-900'}`}>Waste Oil Rules</button>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Settings</h1>
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-2 px-4 py-2 bg-danger/10 hover:bg-danger/20 text-danger text-sm font-medium rounded-lg cursor-pointer"
+        >
+          <LogOut className="w-4 h-4" /> Logout
+        </button>
       </div>
 
-      <div className="bg-white border border-zinc-200 rounded-xl shadow-sm p-6">
-        {activeTab === "store" && (
-          <div className="space-y-6">
-            <div className="flex items-center gap-3 mb-4">
-              <Store className="w-5 h-5 text-primary" />
-              <h2 className="text-lg font-semibold text-zinc-900">Store Information</h2>
-            </div>
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 mb-1">Business Name</label>
-                <input type="text" value={settings.businessName} onChange={e => setSettings({...settings, businessName: e.target.value})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 mb-1">Store Phone</label>
-                <input type="text" value={settings.phone} onChange={e => setSettings({...settings, phone: e.target.value})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none font-digit" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 mb-1">Contact Person</label>
-                <input type="text" value={settings.contactPerson} onChange={e => setSettings({...settings, contactPerson: e.target.value})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 mb-1">Contact Phone</label>
-                <input type="text" value={settings.contactPhone} onChange={e => setSettings({...settings, contactPhone: e.target.value})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none font-digit" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 mb-1">WhatsApp Number</label>
-                <input type="text" value={settings.whatsapp} onChange={e => setSettings({...settings, whatsapp: e.target.value})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none font-digit" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 mb-1">Address</label>
-                <input type="text" value={settings.address} onChange={e => setSettings({...settings, address: e.target.value})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none" />
-              </div>
-            </div>
-            <div className="flex justify-end pt-4">
-              <button onClick={handleSave} className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg cursor-pointer">
-                <Save className="w-4 h-4" /> {saved ? "Saved!" : "Save Info"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {activeTab === "whatsapp" && (
-          <div className="space-y-6">
-            <div className="flex items-center gap-3 mb-4">
-              <MessageSquare className="w-5 h-5 text-primary" />
-              <h2 className="text-lg font-semibold text-zinc-900">WhatsApp Message Templates</h2>
-            </div>
-
-            <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-xs text-primary">
-              <strong>Available Placeholders:</strong> Auto-replaced when sending.
-              <div className="grid grid-cols-4 gap-2 mt-2 font-mono">
-                <span>{`{name}`} → Customer name</span>
-                <span>{`{vehicle}`} → Vehicle No.</span>
-                <span>{`{model}`} → Model</span>
-                <span>{`{amount}`} → Amount</span>
-                <span>{`{invoice_no}`} → Invoice #</span>
-                <span>{`{invoice_date}`} → Invoice date</span>
-                <span>{`{date}`} → Today's date</span>
-                <span>{`{last_date}`} → Last oil change</span>
-                <span>{`{due_date}`} → Due date</span>
-                <span>{`{phone}`} → Your WhatsApp #</span>
-              </div>
-            </div>
-
-            {/* 1. Purchase Thank-You Template */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-medium text-zinc-700">1. Purchase Thank-You (Auto-sent after checkout)</label>
-              </div>
-              <textarea rows={12} value={settings.purchaseTemplate} onChange={e => setSettings({...settings, purchaseTemplate: e.target.value})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none font-mono"></textarea>
-            </div>
-
-            {/* 2. Pending Payment Template */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-medium text-zinc-700">2. Pending Payment Reminder</label>
-              </div>
-              <textarea rows={12} value={settings.pendingPaymentTemplate} onChange={e => setSettings({...settings, pendingPaymentTemplate: e.target.value})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none font-mono"></textarea>
-            </div>
-
-            {/* 3. Oil Template 1 */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-medium text-zinc-700">3. Oil Change Reminder — Short</label>
-              </div>
-              <textarea rows={10} value={settings.oilTemplate1} onChange={e => setSettings({...settings, oilTemplate1: e.target.value})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none font-mono"></textarea>
-            </div>
-
-            {/* 4. Oil Template 2 */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-medium text-zinc-700">4. Oil Change Reminder — Detailed</label>
-              </div>
-              <textarea rows={12} value={settings.oilTemplate2} onChange={e => setSettings({...settings, oilTemplate2: e.target.value})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none font-mono"></textarea>
-            </div>
-
-            <div className="flex justify-end pt-4">
-              <button onClick={handleSave} className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg cursor-pointer">
-                <Save className="w-4 h-4" /> {saved ? "Saved!" : "Save Templates"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {activeTab === "waste" && (
-          <div className="space-y-6">
-            <div className="flex items-center gap-3 mb-4">
-              <Trash2 className="w-5 h-5 text-primary" />
-              <h2 className="text-lg font-semibold text-zinc-900">Waste Oil Estimation Rules</h2>
-            </div>
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 mb-1">Estimation Method</label>
-                <select value={settings.wasteMethod} onChange={e => setSettings({...settings, wasteMethod: e.target.value})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none cursor-pointer">
-                  <option>Fixed Percentage (%)</option>
-                  <option>Fixed Amount (L)</option>
-                  <option>Manual Entry Only</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 mb-1">Default Percentage (%)</label>
-                <input type="number" value={settings.wastePercent} onChange={e => setSettings({...settings, wastePercent: e.target.value})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none font-digit" />
-              </div>
-            </div>
-            <div className="flex justify-end pt-4">
-              <button onClick={handleSave} className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg cursor-pointer">
-                <Save className="w-4 h-4" /> {saved ? "Saved!" : "Save Rules"}
-              </button>
-            </div>
-          </div>
-        )}
+      {/* Current user */}
+      <div className="bg-white border border-zinc-200 rounded-xl p-4 shadow-sm flex items-center justify-between">
+        <div>
+          <p className="text-xs text-zinc-500">Signed in as</p>
+          <p className="text-sm font-semibold text-zinc-900">
+            {user?.name} <span className="text-xs text-zinc-500">({user?.username})</span>
+          </p>
+        </div>
+        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+          user?.role === "admin" ? "bg-primary/10 text-primary" : "bg-zinc-100 text-zinc-700"
+        }`}>
+          {user?.role === "admin" ? "Admin" : "Employee"}
+        </span>
       </div>
+
+      {/* Tabs */}
+      <div className="flex border-b border-zinc-200 gap-6">
+        <button
+          onClick={() => setActiveTab("employees")}
+          className={`pb-3 text-sm font-medium transition-colors cursor-pointer ${
+            activeTab === "employees" ? "border-b-2 border-primary text-primary" : "text-zinc-500 hover:text-zinc-900"
+          }`}
+        >
+          Employees
+        </button>
+        <button
+          onClick={() => setActiveTab("store")}
+          className={`pb-3 text-sm font-medium transition-colors cursor-pointer ${
+            activeTab === "store" ? "border-b-2 border-primary text-primary" : "text-zinc-500 hover:text-zinc-900"
+          }`}
+        >
+          Store Info
+        </button>
+      </div>
+
+      {/* ============ EMPLOYEES TAB ============ */}
+      {activeTab === "employees" && (
+        <div className="space-y-4">
+          <div className="bg-white border border-zinc-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-zinc-200 flex items-center justify-between flex-wrap gap-2">
+              <h2 className="text-sm font-semibold text-zinc-900 flex items-center gap-2">
+                <Users className="w-4 h-4 text-primary" /> Employee Accounts
+              </h2>
+              {user?.role === "admin" && (
+                <button
+                  onClick={() => setIsAddEmployeeOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary-hover text-white text-xs font-semibold rounded cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Employee
+                </button>
+              )}
+            </div>
+
+            {/* Admin row (read-only) */}
+            <div className="flex items-center justify-between p-4 border-b border-zinc-100 bg-zinc-50">
+              <div>
+                <p className="text-sm font-medium text-zinc-900">Administrator</p>
+                <p className="text-xs text-zinc-500 font-digit">
+                  (from .env) · username: {process.env.NEXT_PUBLIC_ADMIN_USERNAME || "admin"}
+                </p>
+              </div>
+              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                Admin
+              </span>
+            </div>
+
+            {/* Employees */}
+            {employees.length === 0 ? (
+              <div className="p-8 text-center text-sm text-zinc-500">
+                No employees yet. Click <strong>Add Employee</strong> to create one.
+              </div>
+            ) : (
+              employees.map(emp => (
+                <div key={emp.username} className="flex items-center justify-between p-4 border-b border-zinc-100 last:border-0">
+                  <div>
+                    <p className="text-sm font-medium text-zinc-900">{emp.name}</p>
+                    <p className="text-xs text-zinc-500 font-digit">@{emp.username}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-100 text-zinc-700">
+                      Employee
+                    </span>
+                    {user?.role === "admin" && (
+                      <button
+                        onClick={() => handleRemoveEmployee(emp.username)}
+                        className="p-1.5 text-zinc-400 hover:text-danger hover:bg-danger/10 rounded cursor-pointer"
+                        title="Remove"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800">
+            <strong>Note:</strong> Employee passwords are stored in your browser's localStorage.
+            For production security, migrate this to a proper backend with hashed passwords.
+          </div>
+        </div>
+      )}
+
+      {/* ============ STORE TAB ============ */}
+      {activeTab === "store" && (
+        <div className="bg-white border border-zinc-200 rounded-xl shadow-sm p-6 space-y-4">
+          <div className="flex items-center gap-3 mb-2">
+            <Store className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-semibold text-zinc-900">Store Information</h2>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-zinc-700 mb-1">Business Name</label>
+              <input
+                type="text"
+                value={storeForm.businessName}
+                onChange={e => setStoreForm({ ...storeForm, businessName: e.target.value })}
+                className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-zinc-700 mb-1">Phone</label>
+              <input
+                type="text"
+                value={storeForm.phone}
+                onChange={e => setStoreForm({ ...storeForm, phone: e.target.value })}
+                className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm font-digit"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-zinc-700 mb-1">WhatsApp</label>
+              <input
+                type="text"
+                value={storeForm.whatsapp}
+                onChange={e => setStoreForm({ ...storeForm, whatsapp: e.target.value })}
+                className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm font-digit"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-zinc-700 mb-1">Website</label>
+              <input
+                type="text"
+                value={storeForm.website}
+                onChange={e => setStoreForm({ ...storeForm, website: e.target.value })}
+                className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-zinc-700 mb-1">Address</label>
+            <input
+              type="text"
+              value={storeForm.address}
+              onChange={e => setStoreForm({ ...storeForm, address: e.target.value })}
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm"
+            />
+          </div>
+
+          <div className="flex justify-end pt-4 border-t border-zinc-200">
+            <button
+              onClick={handleSaveStore}
+              className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg cursor-pointer"
+            >
+              <Save className="w-4 h-4" /> Save Info
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Add Employee Modal */}
+      {isAddEmployeeOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-primary" /> Add Employee
+              </h2>
+              <button onClick={() => setIsAddEmployeeOpen(false)} className="text-zinc-400 hover:text-zinc-600 cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddEmployee} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">Full Name</label>
+                <input
+                  required
+                  type="text"
+                  value={newEmp.name}
+                  onChange={e => setNewEmp({ ...newEmp, name: e.target.value })}
+                  placeholder="e.g. Ahmed Khan"
+                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">Username</label>
+                <input
+                  required
+                  type="text"
+                  value={newEmp.username}
+                  onChange={e => setNewEmp({ ...newEmp, username: e.target.value })}
+                  placeholder="e.g. ahmed"
+                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none font-digit"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">Password</label>
+                <input
+                  required
+                  type="text"
+                  value={newEmp.password}
+                  onChange={e => setNewEmp({ ...newEmp, password: e.target.value })}
+                  placeholder="e.g. ahmed123"
+                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none font-digit"
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddEmployeeOpen(false)}
+                  className="px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 rounded-lg cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-lg cursor-pointer"
+                >
+                  Save Employee
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
